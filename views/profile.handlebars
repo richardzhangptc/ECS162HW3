@@ -1,0 +1,33 @@
+{{!-- profile.handlebars --}}
+{{!< main }}
+
+<div class="profile-container">
+    <div class="profile-avatar">
+        <img src="{{user.avatar_url}}" alt="{{user.username}}'s avatar" class="avatar">
+    </div>
+
+
+    <section class="profile-info">
+        <h2>{{user.username}}</h2>
+        <p>You joined PixBlog on: {{user.memberSince}}</p>
+    </section>
+
+
+</div>
+
+<section class="user-posts">
+    <!-- you can call posts tweets, or truths, or whatever, these are neologisms. Choose your own new in server.js -->
+    <h2>Your {{postNeoType}}s</h2>
+
+    <!-- you'll need to make this conditaionl and #each expression work -->
+    {{#if userPosts.length}}
+    <ul>
+        {{#each userPosts}}
+        {{> post this}}
+        {{/each}}
+    </ul>
+    {{else}}
+        <!-- fix this up with some helper functions and other handlebars expressions, or add you own character -->
+        <p>You have not posted yet, poster.</p>
+    {{/if}}
+</section>

@@ -1,0 +1,77 @@
+{{! Partial for a single post }}
+<div class="post">
+    <div class="post-avatar">
+        <img src="{{avatar_url}}" alt="{{username}}'s avatar" class="avatar">
+    </div>
+
+
+    <div class="post-content preserve-newlines">
+
+        <!-- the post -->
+        <h2>{{title}}</h2>
+        <p>{{{content}}}</p>
+
+        <div class="post-info">
+            <span class="post-timestamp">{{timestamp}}</span>
+            <span class="post-author">by {{username}}</span>
+        </div>
+        
+
+            {{#if currentUser}}
+            <div class="post-status-bar">
+            
+                {{#ifCond currentUser.username username}}
+                    <button class="delete-button" data-id="{{id}}" onclick="handleDeleteClick(event)">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                {{else}}
+                    <button class="like-button" data-id="{{id}}" onclick="handleLikeClick(event)">
+                        ♥ {{likes}}
+                    </button>
+                {{/ifCond}}
+
+            
+            </div>    
+            {{/if}} 
+
+
+    </div>
+</div>
+<script>
+
+    function handleLikeClick(event) {
+        const postId = event.target.getAttribute('data-id');
+
+        fetch(`/like/${postId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                event.target.innerText = `♥ ${data.likes}`;
+            }
+        }); 
+    }
+
+    function handleDeleteClick(event) {
+        const buttonElement = event.target.closest('.delete-button');
+        const postId = buttonElement.getAttribute('data-id');        
+
+
+        fetch(`/delete/${postId}`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+
+
+                buttonElement.closest('.post').remove();
+            }
+        });
+        
+    }    
+</script>
