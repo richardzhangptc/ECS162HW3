@@ -19,8 +19,10 @@
 
             {{#if currentUser}}
             <div class="post-status-bar">
-            
+
                 {{#ifCond currentUser.username username}}
+
+
                     <button class="delete-button" data-id="{{id}}" onclick="handleDeleteClick(event)">
                         <i class="fas fa-trash-alt"></i>
                     </button>

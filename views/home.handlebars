@@ -39,10 +39,22 @@
 
         {{#if posts.length}}
         <h2>Recent posts</h2>
+
+
+
+        <section>
+            <select id="sortby" onchange="handleSortingChange(this)">
+            <option value="">Sort By:</option>
+            <option value="Recency">Recency</option>
+            <option value="Likes">Likes</option>
+            </select>
+        </section>
+
+
         <ul>
             {{#each posts}}
                 <!-- you have to pass the user in to posts and this is the syntax -->
-                {{> post this user=../user}}            
+                {{> post this user=../currentUser}}
             {{/each}}
         </ul>
         {{else}}
@@ -127,4 +139,39 @@ function insertEmoji(emoji) {
     textarea.value += emoji;
     textarea.focus();
 }
+
+
+
+
+    const sortingOption = document.getElementById('sortingOption');
+    sortingOption.addEventListener('change', function() {
+
+        console.log("CHANGED SORTING")
+
+        const selectedOption = this.value;
+
+        fetch(`/updateSorting/${selectedOption}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+
+        // Call a function to sort the posts based on the selected option
+        sortPosts(selectedOption);
+    });
+
+
+    function handleSortingChange(mode) {
+        
+        fetch(`/updateSorting/${mode.value}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+    }
+
+
 </script>
+

@@ -1,3 +1,9 @@
+//SERVER.JS
+
+
+const dotenv = require('dotenv');
+dotenv.config();
+
 const express = require('express');
 const expressHandlebars = require('express-handlebars');
 const session = require('express-session');
@@ -5,12 +11,75 @@ const session = require('express-session');
 const { createCanvas } = require("@napi-rs/canvas");
 const path = require('path');
 
+const sqlite = require('sqlite');
+const sqlite3 = require('sqlite3');
+
+const initializeDB = require('./populatedb');
+
+const dbFileName = 'microblog.db';
+
+const passport = require('./passport');
+
+
+
+
+
+
+
+
+
+
+
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Configuration and Setup
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+
+const clientId = process.env.CLIENT_ID;
+const clientSecret = process.env.CLIENT_SECRET;
+
 const app = express();
 const PORT = 3000;
+
+async function connectToDatabase() {
+    try {
+        const db = await sqlite.open({ filename: dbFileName, driver: sqlite3.Database});
+
+
+
+        console.log('Connected to the db.');
+        return db;
+    } catch (err) {
+        console.error('issue:', err);
+    }
+}
+
+
+
+
+let db;
+
+async function startServer() {
+    try {
+        db = await connectToDatabase();
+
+
+        await initializeDB();
+
+        updateUsersWithAvatars();
+
+
+        app.listen(PORT, () => {
+
+        console.log(`Server is running on http://localhost:${PORT}`);
+        });
+    } catch (err) {
+
+        console.error('iisue:', err);
+    }
+  }
+  
+startServer();
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -63,7 +132,7 @@ app.set('views', './views');
 
 app.use(
     session({
-        secret: 'oneringtorulethemall',     // Secret key to sign the session ID cookie
+        secret: process.env.SESSION_SECRET,     // Secret key to sign the session ID cookie
         resave: false,                      // Don't save session if unmodified
         saveUninitialized: false,           // Don't create session until something stored
         cookie: { secure: false },          // True if using https. Set to false for development without https
@@ -97,72 +166,216 @@ app.use(express.json());                            // Parse JSON bodies (as sen
 // We pass the posts and user variables into the home
 // template
 //
-app.get('/', (req, res) => {
-    const posts = getPosts(req); // Pass the `req` object
-    const user = getCurrentUser(req) || {};
-    res.render('home', { posts, user });
+
+let sMode = 'Recency';
+
+
+app.get('/', async (req, res) => {
+    try {
+
+
+        const sortOption = sMode;
+        const posts = await getPosts(req, sortOption);
+        const user = await getCurrentUser(req) || {};
+        res.render('home', { posts, user});
+    } catch (err) {
+        console.error('Error fetching posts:', err);
+        res.redirect('/error');
+    }
 });
 
 // Register GET route is used for error response from registration
 //
 app.get('/register', (req, res) => {
+
     res.render('loginRegister', { regError: req.query.error });
 });
 
 // Login route GET route is used for error response from login
 //
 app.get('/login', (req, res) => {
-    res.render('loginRegister', { loginError: req.query.error });
+    res.render('googleSignIn');
+    //res.render('loginRegister', { loginError: req.query.error });
 });
 
 // Error route: render error page
-//
 app.get('/error', (req, res) => {
     res.render('error');
 });
 
-// Additional routes that you must implement
+
+app.get('/auth/google',
+    passport.authenticate('google', { scope: ['profile', 'email', 'openid'] })
+);
+
+app.get('/auth/google/callback', async (req, res) => {
+
+    passport.authenticate('google', { scope: ['profile', 'email', 'openid'],
+        failureRedirect: '/'
+    }) (req, res, async () => {
+//p0
+
+        const googleId = req.user.id;
+        //console.log("GOOGLE ID IS " + googleId);
 
 
-app.post('/posts', (req, res) => {
+
+        const hashedGoogleId = hash(googleId);
+        req.session.hashedGoogleId = hashedGoogleId;
+ 
+ 
+        try {
+            let loc = await findUserByHashedGoogleId(hashedGoogleId);
+
+            if (loc) {
+                req.session.userId = loc.id;
+                req.session.loggedIn = true;
+                res.redirect('/');
+            } 
+            else {
+                res.redirect('/registerUsername');
+            }
+        } catch (err) {
+            console.error('issue:', err);
+            res.redirect('/error');
+        }
+    });
+ 
+ 
+ });
+ 
+ 
+ 
+
+function hash(input) {
+
+
+    input = String(input);
     
-    let userId = req.session.userId;
+    let hashValue = 0;
 
+    for (let i = 0; i < input.length; i++) {
 
-    let user = findUserById(userId);
-    let { title, content } = req.body;
+        hashValue+=input.charCodeAt(i);
 
-    if (user && title && content){
-        addPost(title, content, user);
-        res.redirect('/');
     }
-    else {
+
+
+    return hashValue;
+}
+
+
+
+
+async function findUserByHashedGoogleId(hashedID) {
+
+
+    //console.log("LOOKING FOR USER WITH HASHED ID OF " + hashedID);
+
+    try {
+
+        let userFound = await db.get('SELECT * FROM users WHERE hashedGoogleId = ?', [hashedID]);
+        if (userFound) {
+
+          return userFound;
+        }
+        else{
+
+            return null;
+        }
+      } catch (err) {
+        console.error('issue:', err);
+        res.redirect('/error');
+
+
+      }{}
+
+}
+
+
+
+
+
+app.get('/registerUsername', (req, res) => {
+
+    res.render('registerUsername', { regError: req.query.error });
+});
+
+
+
+app.post('/posts', isAuthenticated, async (req, res) => {
+    const userId = req.session.userId;
+    const { title, content } = req.body;
+
+    if (userId && title && content) {
+        let user = await findUserById(userId);
+
+
+        if (user) {
+
+            await addPost(title, content, user);
+            res.redirect('/');
+        } else {
+            //console.log("ISSUE POINT 1");
+            res.redirect('/error');
+        }
+    } else {
+        //console.log("ISSUE POINT 2");
         res.redirect('/error');
     }
-    
-    
-
 });
+
+
 app.post('/like/:id', isAuthenticated, function(req, res) {
+    //console.log("liking");
     // TODO: Update post likes
     updatePostLikes(req, res);
 });
 
 
+app.post('/updateSorting/:sortMode', isAuthenticated, async function(req, res) {
 
-app.post('/delete/:id', isAuthenticated, (req, res) => {
-    let postId = parseInt(req.params.id);
-    let userId = req.session.userId;
+    
+    let sortMode = req.params.sortMode;
 
-    //find psot index
-    let postIndex = posts.findIndex(p => p.id === postId && findUserByUsername(p.username).id === userId);
+    sMode = sortMode;
+    console.log("SMODE IS " + sMode)
+    try {
+        let sortOption = sMode;
+        let posts = await getPosts(req, sortOption);
+        let user = await getCurrentUser(req) || {};
+        res.render('home', { posts, user});
+    } catch (err) {
+        console.error('Error fetching posts:', err);
+        res.redirect('/error');
+    }
 
-    if (postIndex !== -1) {
-        posts.splice(postIndex, 1);
+
+
+});
+
+
+app.post('/delete/:id', isAuthenticated, async (req, res) => {
+    const postId = parseInt(req.params.id);
+    const userId = req.session.userId;
+
+    try {
+        let post = await db.get('SELECT * FROM posts WHERE id = ?', [postId]);
+        let user = await findUserById(userId);
+
+
+        if (!post || post.username !== user.username) {
+            return res.send({ success: false, message: 'not found' });
+        }
+
+
+        await db.run('DELETE FROM posts WHERE id = ?', [postId]);
+
         res.send({ success: true });
     } 
-    else {
-        res.status(404).send({ success: false, message: 'Did not findl post' });
+    catch (err) {
+        console.error('issue:', err);
+        res.send({ success: false, message: 'issue deleting post' });
     }
 });
 
@@ -178,29 +391,57 @@ app.get('/avatar/:username', (req, res) => {
 
 
 });
-app.post('/register', (req, res) => {
-
+app.post('/register', async (req, res) => {
     let username = req.body.username;
+  
+    try {
+        const check = await db.get('SELECT * FROM users WHERE username = ?', [username]);
 
-    if (findUserByUsername(username)) {
-        res.redirect('/register?error=Username already exists');
-    }
-    else {
-        //addUser(username)
-        registerUser(req, res);
-    }
+        
+        if (check) {
+            return res.redirect('/registerUsername?error=Username already exists');
+        }
+    
+        await registerUser(req, res, username);
 
+
+    } catch (err) {
+        console.error('issue:', err);
+        res.redirect('/error');
+    }{}
+  });
+
+
+app.post('/login', async (req, res) => {
+    try {
+      await loginUser(req, res);
+
+    } catch (err) {
+      
+      res.redirect('/error');
+      
+    }
 });
 
 
-app.post('/login', (req, res) => {
-    loginUser(req, res);
-});
 
 app.get('/logout', (req, res) => {
-    logoutUser(req, res);
+
+    req.session.destroy((err) => {
+        if (err) {
+            res.redirect('/error');
+        } else {
+
+            res.redirect('/googleLogout');
+        }
+    });
 });
 
+
+app.get('/googleLogout', isAuthenticated, (req, res) => {
+
+    res.render('googleLogout');
+});
 
 
 app.get('/emojis', (req, res) => {
@@ -210,11 +451,11 @@ app.get('/emojis', (req, res) => {
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Server Activation
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+/*
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
-
+*/
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Support Functions and Variables
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -222,136 +463,45 @@ app.listen(PORT, () => {
 // Example data for posts and users
 // Sample data for testing the MicroBlog application
 
-// Users object array
-let users = [
-    {
-        id: 1,
-        username: 'ByteArtist',
-        memberSince: '2024-06-01'
-    },
-    {
-        id: 2,
-        username: 'PixelMaster',
-        memberSince: '2024-06-01'
-    },
-    {
-        id: 3,
-        username: 'EightBits',
-        memberSince: '2024-06-01'
-    },
-    {
-        id: 4,
-        username: 'RetroRogue',
-        memberSince: '2024-06-01'
-    },
-    {
-        id: 5,
-        username: 'SpriteSuccessor',
-        memberSince: '2024-06-01'
-    }
-];
-
-// Generate avatars for existing users
-for (let i = 0; i < users.length; i++) {
-    let user = users[i];
-    if (user && !user.avatar_url) {
-        let avatarBuffer = generateAvatar(user.username[0]);
-        user.avatar_url = "data:image/png;base64," + avatarBuffer.toString('base64');
-    }
-}
 
 
 
-// Posts object array
-let posts = [
-    {
-        id: 1,
-        title: 'Getting Started with Pixel Art: An Introductory Guide',
-        content: 'Just created a comprehensive guide for beginners covering the basics of pixel art, essential tools, and fundamental techniques.',
-        username: 'SpriteSuccessor',
-        timestamp: '2024-06-02 08:30',
-        likes: 0
-    },
-    {
-        id: 2,
-        title: 'Monetizing Your Pixel Art: Tips for Selling and Commissioning Work',
-        content: 'Practical advice on how to turn your pixel art hobby into a source of income through commissions, prints, and digital sales.',
-        username: 'PixelMaster',
-        timestamp: '2024-06-02 09:45',
-        likes: 0
-    },
-    {
-        id: 3,
-        title: 'Exploring Different Styles of Pixel Art: Minimalism to Hyper-Detail',
-        content: 'A look at various pixel art styles, providing examples and techniques for achieving each style.',
-        username: 'EightBits',
-        timestamp: '2024-06-02 11:00',
-        likes: 0
-    },
-    {
-        id: 4,
-        title: 'Pixel Art Trends: Whats Hot in 2024',
-        content: 'An analysis of current trends in pixel art, predicting future directions and highlighting popular themes and techniques.',
-        username: 'RetroRogue',
-        timestamp: '2024-06-02 13:00',
-        likes: 0
-    },
-    {
-        id: 5,
-        title: 'Top 10 Pixel Art Tools for Aspiring Artists',
-        content: 'An overview of the best software and online tools available for creating pixel art, with pros and cons for each.',
-        username: 'ByteArtist',
-        timestamp: '2024-06-02 14:00',
-        likes: 0
-    },
-    {
-        id: 6,
-        title: 'Top 20 Pixel Art Games You Must Play',
-        content: 'A curated list of the best pixel art games across various genres, highlighting what makes each game unique and visually appealing.',
-        username: 'RetroRogue',
-        timestamp: '2024-06-02 15:00',
-        likes: 0
-    },
-    {
-        id: 7,
-        title: 'Exploring Minimalist Pixel Art: Less is More',
-        content: 'An introduction to minimalist pixel art, showcasing techniques for creating impactful images with a limited number of pixels and colors.',
-        username: 'SpriteSuccessor',
-        timestamp: '2024-06-02 16:00',
-        likes: 0
-    },
-    {
-        id: 8,
-        title: 'Seasonal Pixel Art: Designing Art for Holidays and Celebrations',
-        content: 'Ideas and techniques for creating pixel art themed around different seasons and holidays, from festive decorations to seasonal landscapes.',
-        username: 'PixelMaster',
-        timestamp: '2024-06-02 17:00',
-        likes: 0
-    }
 
-];
+
+
+
 
 // Function to find a user by username
-function findUserByUsername(username) {
-    for (let i = 0; i < users.length; i++) {
-        if (users[i].username === username) {
-          return users[i];
-        }
-    }
-    return null;
-}
+async function findUserByUsername(username) {
+    try {
+      const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
 
-// Function to find a user by user ID
-function findUserById(userId) {
-    for (let i = 0; i < users.length; i++) {
-        if (users[i].id === userId) {
-          return users[i];
-        }
+      return user;
+
+
+
+    } catch (err) {
+
+      return null;
     }
-    return null;
+}
+  
+
+async function findUserById(userId) {
+    try {
+        const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+
+        return user;
+
+    } catch (err) {
+
+        return null;
+    }
 }
 
 // Function to add a new user
+
+/*
 function addUser(username) {
 
     let timestamp = new Date().toISOString();
@@ -368,7 +518,7 @@ function addUser(username) {
 
     users.push(newUser);
 }
-
+*/
 // Middleware to check if user is authenticated
 function isAuthenticated(req, res, next) {
     console.log(req.session.userId);
@@ -380,34 +530,76 @@ function isAuthenticated(req, res, next) {
 }
 
 // Function to register a user
-function registerUser(req, res) {
-    // TODO: Register a new user and redirect appropriately
-    addUser(req.body.username);
-    let createdUser = findUserByUsername(req.body.username);
+async function registerUser(req, res, username) {
+    try {
+
+        let timing = new Date().toLocaleString('en-CA', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit', 
+            hour12: false 
+        }).replace(',', '');
 
 
-    req.session.loggedIn = true;
-    req.session.userId = createdUser.id;
+        const avatarBuffer = generateAvatar(username[0]);
+        const avatarUrl = "data:image/png;base64," + avatarBuffer.toString('base64');
+
+
+
+
+        await db.run('INSERT INTO users (username, hashedGoogleId, avatar_url, memberSince) VALUES (?, ?, ?, ?)',
+        [username, req.session.hashedGoogleId, avatarUrl, timing]);
+
     
+  
+        let createdUser = await db.get('SELECT * FROM users WHERE username = ?', [username]);
+        req.session.loggedIn = true;
+        req.session.userId = createdUser.id;
 
-    res.redirect('/');
-}
+  
+        res.redirect('/');
+
+    } catch (err) {
+
+      res.redirect('/error');
+    }
+  }
 
 // Function to login a user
-function loginUser(req, res) {
-    let username = req.body.username;
-    let user = findUserByUsername(username);
+async function loginUser(req, res) {
+    const { username } = req.body;
+    //console.log(username);
+  
+    try {
+        let user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
 
 
-    if (user) {
-        req.session.loggedIn = true;
-        req.session.userId = user.id;
+        if (user) {
+            //console.log(user.id);
+            req.session.loggedIn = true;
+            req.session.userId = user.id;
+
+            console.log("LOGGED IN ID IS: " + req.session.userId);
+
+        
+
         res.redirect('/');
-    }
-    else {
-        res.redirect('/login?error=Invalid username or password');
+      } 
+      
+      else {
+        res.redirect('/login?error=INVALID username. Try Another');
+      }
+
+
+    } catch (err) {
+      throw err;
     }
 }
+
+
 
 // Function to logout a user
 function logoutUser(req, res) {
@@ -417,52 +609,62 @@ function logoutUser(req, res) {
 }
 
 // Function to render the profile page
-function renderProfile(req, res) {
-    let user = getCurrentUser(req);
-    let userPosts = [];
-    for (let post of posts) {
-        if (post.username === user.username) {
-            userPosts.push(post);
+async function renderProfile(req, res) {
+    try {
+        let user = await getCurrentUser(req);
+        if (!user) {
+            return res.redirect('/login');
         }
+
+        let yourPosts = await db.all('SELECT * FROM posts WHERE username = ? ORDER BY timestamp DESC', [user.username]);
+
+        res.render('profile', { user, yourPosts});
+
+    } 
+    catch (err) {
+        console.error('issue with ', err);
+        res.redirect('/error');
     }
-    res.render('profile', { user, userPosts });
 }
 
-// Function to update post likes
-function updatePostLikes(req, res) {
-    let postId = parseInt(req.params.id);
 
-    let post;
-    for (let i = 0; i < posts.length; i++) {
-        if (posts[i].id === postId) {
-            post = posts[i];
-            break;
-        }
-    }
+async function updatePostLikes(req, res) {
+    const postId = parseInt(req.params.id);
+    const userId = req.session.userId;
 
-    if (post) {
-        let likedPostIndex = -1;
-        for (let i = 0; i < req.session.likedPosts.length; i++) {
-            if (req.session.likedPosts[i] === postId) {
-                likedPostIndex = i;
-                break;
-            }
+    try {
+        
+        let alreadyLiked = await db.get('SELECT * FROM likes WHERE userId = ? AND postId = ?', [userId, postId]);
+
+        if (alreadyLiked) {
+   //unlike
+            await db.run('DELETE FROM likes WHERE userId = ? AND postId = ?', [userId, postId]);
+            await db.run('UPDATE posts SET likes = likes - 1 WHERE id = ?', [postId]);
+            res.send({success: true, likes: (await getPostLikes(postId)), liked: false});
+        } 
+        else {
+
+            //like it
+            await db.run('INSERT INTO likes (userId, postId) VALUES (?, ?)', [userId, postId]);
+            await db.run('UPDATE posts SET likes = likes + 1 WHERE id = ?', [postId]);
+
+            res.send({success: true, likes: (await getPostLikes(postId)), liked: true});
         }
 
-        if (likedPostIndex !== -1) {
-            // unlike
-            post.likes -= 1;
-            req.session.likedPosts.splice(likedPostIndex, 1);
-            res.send({ success: true, likes: post.likes, liked: false });
-        } else {
-            // like
-            post.likes += 1;
-            req.session.likedPosts.push(postId);
-            res.send({ success: true, likes: post.likes, liked: true });
-        }
+
     } 
-    else {
-        res.status(404).send({ success: false, message: 'Did not find post' });
+    catch (err) {
+        res.send({ success: false, message: 'Issue liking post'});
+    }
+}
+
+async function getPostLikes(postId) {
+    try {
+        const post = await db.get('SELECT likes FROM posts WHERE id = ?', [postId]);
+        return post.likes || 0;
+    } catch (err) {
+        console.error('Error getting post likes:', err);
+        return 0;
     }
 }
 
@@ -481,72 +683,108 @@ function handleAvatar(req, res) {
     else if (user){
         res.redirect(user.avatar_url);
     }
+
+    //issur
     else {
-        res.status(404).send('Did not find user');
+        res.send('Did not find user');
     }
 }
 
-// Function to get the current user from session
-function getCurrentUser(req) {
-    // TODO: Return the user object if the session user ID matches
+
+
+async function getCurrentUser(req) {
+
+    
     if (req.session.userId) {
-        return findUserById(req.session.userId);
+        return await findUserById(req.session.userId);
     }
-    else {
+    else 
+    {
         return undefined;
     }
 }
 
 // Function to get all posts, sorted by latest first
-function getPosts(req) {
-    let currentUser = getCurrentUser(req);
-    let postsReversed = posts.slice().reverse();
-    let result = [];
-  
-    for (let i = 0; i < postsReversed.length; i++) {
-        let post = postsReversed[i];
-        let user = findUserByUsername(post.username);
-        let newPost = {};
+async function getPosts(req, sortOption) {
 
-        for (let data in post) {
-            newPost[data] = post[data];
-        }
+    //console.log(sortOption);
+
+    try {
+        let currentUser = await getCurrentUser(req);
+        let posts = await db.all('SELECT * FROM posts ORDER BY timestamp DESC');
+
+        let result = await Promise.all(posts.map(async (post) => {
+
+            let user = await findUserByUsername(post.username);
 
 
+            let newPost = { ...post };
 
-        if (user) {
-            newPost.avatar_url = user.avatar_url;
-        } else {
-            newPost.avatar_url = undefined;
-        }
-        newPost.currentUser = currentUser;
+            if (user) {
+                newPost.avatar_url = user.avatar_url;
+            } 
+            
+            else {
+                newPost.avatar_url = undefined;
+            }
 
-        result.push(newPost);
+            newPost.currentUser = currentUser;
+            return newPost;
+        }));
+
+
+        
+        //base it off of the selected option
+        let sortedPosts = sortPosts(sortOption, result);
+
+        return sortedPosts;
+    } catch (err) {
+        return [];//empoty
     }
-  
-    return result;
 }
+
+function sortPosts(mode, posts) {
+    if (mode === 'Recency') {
+
+        posts.sort((x, y) => y.timestamp - x.timestamp);
+
+    }
+     else if (option === 'Likes') {
+        posts.sort((x, y) => y.likes - x.likes);
+    }
+
+    return posts;
+}
+
+
 
 // Function to add a new post
-function addPost(title, content, user, res) {
-    // TODO: Create a new post object and add to posts array
-
-    let timestamp = new Date().toISOString();
-    let date = timestamp.substring(0, 10);
+async function addPost(title, content, user) {
+    try {
 
 
-    let newPost = {
-        id: posts.length + 1,
-        title,
-        content,
-        username: user.username,
-        timestamp: date,
-        likes: 0
-    };
+        let timing = new Date().toLocaleString('en-CA', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit', 
+            hour12: false 
+        }).replace(',', '');
 
-    posts.push(newPost);
-    
+
+
+        await db.run(
+            'INSERT INTO posts (title, content, username, timestamp, likes) VALUES (?, ?, ?, ?, ?)', [title, content, user.username, timing, 0]
+        );
+
+
+    } catch (err) {
+        console.error('Issue with :', err);
+    }
 }
+
 
 // Function to generate an image avatar
 function generateAvatar(letter, width = 100, height = 100) {
@@ -583,3 +821,26 @@ function generateAvatar(letter, width = 100, height = 100) {
 
     return canvas.toBuffer('image/png');
 }
+
+
+
+
+async function updateUsersWithAvatars() {
+    try {
+      let allusers = await db.all('SELECT * FROM users');
+  
+      for (let user of allusers) {
+        if (!user.avatar_url) {
+          const avatarBuffer = generateAvatar(user.username[0]);
+          const avatarUrl = "data:image/png;base64," + avatarBuffer.toString('base64');
+  
+        
+          await db.run('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, user.id]);
+        }
+      }
+
+    } 
+    catch (err) {
+      console.error('issue:', err);
+    }
+  }

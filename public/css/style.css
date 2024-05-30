@@ -257,4 +257,10 @@ button {
     color: #333333;
 }
 
-
+.google-button {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.2em; 
+    margin: 300px;
+}

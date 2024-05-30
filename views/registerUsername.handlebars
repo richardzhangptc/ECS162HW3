@@ -1,0 +1,18 @@
+{{! Use the main layout }}
+{{!< main }}
+    <section class = "register-area">
+        <h2>Register</h2>
+        <!-- errors will appear here -->
+        {{#if regError}}
+            <p style="color: red;">{{regError}}</p>
+        {{/if}}
+        <form action="/register" method="POST">
+            <!-- the registration form goes here -->
+            <label for = "new-username"> Username:</label>
+            <input type = "text" id = "new-username" name = "username", required>
+            <button type="submit">Register</button>
+        </form>
+    </section>
+</section>
+
+<!--OR app.post('/register', registerUser); //put in server.js from lecture
