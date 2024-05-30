@@ -335,7 +335,7 @@ app.post('/like/:id', isAuthenticated, function(req, res) {
 
 app.post('/updateSorting/:sortMode', isAuthenticated, async function(req, res) {
 
-    
+    /*
     let sortMode = req.params.sortMode;
 
     sMode = sortMode;
@@ -349,7 +349,7 @@ app.post('/updateSorting/:sortMode', isAuthenticated, async function(req, res) {
         console.error('Error fetching posts:', err);
         res.redirect('/error');
     }
-
+*/
 
 
 });

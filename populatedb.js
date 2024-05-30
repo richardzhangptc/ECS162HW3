@@ -65,7 +65,7 @@ async function initializeDB() {
 
     // Insert sample data into the database
     await Promise.all(users.map(user => {
-        console.log(user.hashedGoogleId);
+
         return db.run(
             'INSERT INTO users (username, hashedGoogleId, avatar_url, memberSince) VALUES (?, ?, ?, ?)',
             [user.username, user.hashedGoogleId, user.avatar_url, user.memberSince]
