@@ -6,20 +6,34 @@
         <img src="{{user.avatar_url}}" alt="{{user.username}}'s avatar" class="avatar">
     </div>
 
-
     <section class="profile-info">
         <h2>{{user.username}}</h2>
         <p>You joined PixBlog on: {{user.memberSince}}</p>
+
+        {{#ifCond user.role 'user'}}
+            <div id="admin-mode-area">
+                <input type="password" id="admin-password-input" placeholder="Enter admin password">
+                <button onclick="enterAdminMode()">
+                    Enter Admin Mode
+                </button>
+            </div>
+        {{/ifCond}}
+
+        
+        {{#ifCond user.role 'admin'}}
+            <button class="exit-admin-button" onclick="exitAdminMode()">
+                Exit Admin Mode
+            </button>
+        {{/ifCond}}
+
+
+
     </section>
-
-
 </div>
 
 <section class="user-posts">
-    <!-- you can call posts tweets, or truths, or whatever, these are neologisms. Choose your own new in server.js -->
     <h2>Your {{postNeoType}}s</h2>
 
-    <!-- you'll need to make this conditaionl and #each expression work -->
     {{#if userPosts.length}}
     <ul>
         {{#each userPosts}}
@@ -27,7 +41,80 @@
         {{/each}}
     </ul>
     {{else}}
-        <!-- fix this up with some helper functions and other handlebars expressions, or add you own character -->
-        <p>You have not posted yet, poster.</p>
+        <p>You have not posted yet.</p>
     {{/if}}
 </section>
+
+
+<section class="delete-account-area">
+    <button class="delete-account-button" onclick="handleDeleteAccount()">
+        Delete Account
+    </button>
+</section>
+
+
+
+<script>
+
+    function enterAdminMode() {
+        const adminPassword = document.getElementById('admin-password-input').value;
+        const correctPassword = 'password';
+
+        if (adminPassword === correctPassword) {
+
+            fetch('/setAdminMode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }).then(() => {
+                window.location.reload();
+            });
+            
+        }
+        else {
+            alert('Incorrect password.');
+        }
+
+    }
+
+    function exitAdminMode()
+    {
+        fetch('/exitAdminMode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }).then(() => {
+                window.location.reload();
+            });
+    }
+
+
+    function handleDeleteAccount() {
+        const confirmation = confirm('Are you sure you want to delete your account and all your data? This cannot be undone');
+
+        if (confirmation) {
+            fetch(`/deleteaccount/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+
+                if (data.success) {
+
+                    window.location.href = '/';
+                }
+
+            })
+            .catch(error => {
+                console.error('issue with deleting account (SELF) ', error);
+            });
+        }
+    }
+
+
+</script>

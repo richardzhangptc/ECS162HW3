@@ -17,8 +17,10 @@ async function initializeDB() {
             username TEXT NOT NULL UNIQUE,
             hashedGoogleId TEXT NOT NULL UNIQUE,
             avatar_url TEXT,
-            memberSince DATETIME NOT NULL
+            memberSince DATETIME NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user'
         );
+    
 
         CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,24 +66,35 @@ async function initializeDB() {
     ];
 
     // Insert sample data into the database
-    await Promise.all(users.map(user => {
 
-        return db.run(
-            'INSERT INTO users (username, hashedGoogleId, avatar_url, memberSince) VALUES (?, ?, ?, ?)',
-            [user.username, user.hashedGoogleId, user.avatar_url, user.memberSince]
-        );
-        
-    }));
 
-    await Promise.all(posts.map(post => {
-        return db.run(
-            'INSERT INTO posts (title, content, username, timestamp, likes) VALUES (?, ?, ?, ?, ?)',
-            [post.title, post.content, post.username, post.timestamp, post.likes]
-        );
-    }));
 
-    console.log('Database populated with initial data.');
-    await db.close();
+
+    if ((await db.get('SELECT COUNT(*) FROM users'))['COUNT(*)'] === 0) { //check if data already exists
+        await Promise.all(users.map(user => {
+
+            return db.run(
+                'INSERT INTO users (username, hashedGoogleId, avatar_url, memberSince) VALUES (?, ?, ?, ?)',
+                [user.username, user.hashedGoogleId, user.avatar_url, user.memberSince]
+            );
+            
+        }));
+
+        await Promise.all(posts.map(post => {
+            return db.run(
+                'INSERT INTO posts (title, content, username, timestamp, likes) VALUES (?, ?, ?, ?, ?)',
+                [post.title, post.content, post.username, post.timestamp, post.likes]
+            );
+        }));
+
+        console.log('Database populated with initial data.');
+        await db.close();
+
+    }
+    else {
+        console.log("database already has data");
+        await db.close();
+    }
 }
 
 /*

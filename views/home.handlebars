@@ -41,14 +41,15 @@
         <h2>Recent posts</h2>
 
 
-
-        <section>
-            <select id="sortby" onchange="handleSortingChange(this)">
-            <option value="">Sort By:</option>
-            <option value="Recency">Recency</option>
-            <option value="Likes">Likes</option>
-            </select>
-        </section>
+            {{#if loggedIn}}
+                <section>
+                    <select id="sortby" onchange="handleSortingChange(this)">
+                    <option value="">Sort By:</option>
+                    <option value="Recency">Recency</option>
+                    <option value="Likes">Likes</option>
+                    </select>
+                </section>
+            {{/if}}
 
 
         <ul>
@@ -142,35 +143,17 @@ function insertEmoji(emoji) {
 
 
 
-
-    const sortingOption = document.getElementById('sortingOption');
-    sortingOption.addEventListener('change', function() {
-
-        console.log("CHANGED SORTING")
-
-        const selectedOption = this.value;
-
-        fetch(`/updateSorting/${selectedOption}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-
-        // Call a function to sort the posts based on the selected option
-        sortPosts(selectedOption);
+function handleSortingChange(mode) {
+    fetch(`/updateSorting/${mode.value}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    }).then(() => {
+        window.location.reload();
     });
+}
 
-
-    function handleSortingChange(mode) {
-        
-        fetch(`/updateSorting/${mode.value}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-    }
 
 
 </script>

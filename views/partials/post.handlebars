@@ -12,28 +12,61 @@
         <p>{{{content}}}</p>
 
         <div class="post-info">
-            <span class="post-timestamp">{{timestamp}}</span>
-            <span class="post-author">by {{username}}</span>
+            <span class="post-author">Posted by {{username}}</span>
+            <span class="post-timestamp"> on {{timestamp}}</span>
         </div>
         
 
             {{#if currentUser}}
             <div class="post-status-bar">
 
+
+
+
                 {{#ifCond currentUser.username username}}
-
-
                     <button class="delete-button" data-id="{{id}}" onclick="handleDeleteClick(event)">
                         <i class="fas fa-trash-alt"></i>
                     </button>
+
+                {{else ifCond currentUser.role 'admin'}}
+
+                    {{#unless (eq currentUser.username username)}}
+                        <button class="delete-button" data-id="{{id}}" onclick="handleDeleteClick(event)">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    {{/unless}}
+                    
                 {{else}}
                     <button class="like-button" data-id="{{id}}" onclick="handleLikeClick(event)">
                         ♥ {{likes}}
                     </button>
+
+
+                {{/ifCond}}
+
+
+                {{#ifCond currentUser.role 'admin'}}
+                    {{#unless (eq currentUser.username username)}}
+
+                        <button class="delete-button" data-id="{{id}}" onclick="handleRemoveAccountClick(event)">
+                            Remove Account
+                        </button>
+
+                    {{/unless}}
+
+            
                 {{/ifCond}}
 
             
             </div>    
+
+
+            {{else}}
+            <div class="post-status-bar">
+                ♥ {{likes}}
+            </div>
+
+
             {{/if}} 
 
 
@@ -75,5 +108,19 @@
             }
         });
         
-    }    
+    }   
+
+
+    function handleRemoveAccountClick(event) {
+        const buttonElement = event.target.closest('.delete-button');
+        const postId = buttonElement.getAttribute('data-id');        
+
+
+        fetch(`/adminremoveaccount/${postId}`, {
+            method: 'POST'
+        }).then(() => {
+            window.location.reload();
+        });
+        
+    }   
 </script>

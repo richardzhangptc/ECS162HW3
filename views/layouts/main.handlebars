@@ -13,43 +13,47 @@
 
     <link rel="stylesheet" href="/css/style.css">
 </head>
-<body>
-    <header>
-        <div class="logo">
-            <img src="images/logo.png" class="header-logo">
-            <h1>{{{appName}}}</h1>
-        </div>
-        <nav>
-            <ul>
-                <!-- conditional rendering based on variables - Is the user logged in?-->
-                {{#if loggedIn}}
-                    <li><a href="/">Home</a></li>
-                    <li><a href="/profile">Profile</a></li>
-                    <li><a href="/logout">Logout <span>{{user.username}}</span> </a></li>
-                    <div class="user-info">
+<div class="flex-wrapper">
+    <body>
+        <header>
+            <div class="logo">
+                <img src="images/logo.png" class="header-logo">
+                <h1>{{{appName}}}</h1>
+            </div>
+            <nav>
+                <ul>
+                    <!-- conditional rendering based on variables - Is the user logged in?-->
+                    {{#if loggedIn}}
+                        <li><a href="/">Home</a></li>
+                        <li><a href="/profile">Profile</a></li>
+                        <li><a href="/logout">Logout <span>{{user.username}}</span> </a></li>
+                        <div class="user-info">
 
-                        <!-- conditional rendering based on variables -->
-                        <img src="{{#if user.avatar_url}}
-                                        {{user.avatar_url}}
-                                    {{else}}
-                                        /avatar/{{user.username}}
-                                    {{/if}}" 
-                                    alt="User Avatar" 
-                                    class="header-avatar">
-                    </div>
-                {{else}}
-                    <li><a href="/">Home</a></li>
-                    <li><a href="/login">Login/Register</a></li>
-                {{/if}}
-            </ul>
-        </nav>
-    </header>
+                            <!-- conditional rendering based on variables -->
+                            <img src="{{#if user.avatar_url}}
+                                            {{user.avatar_url}}
+                                        {{else}}
+                                            /avatar/{{user.username}}
+                                        {{/if}}" 
+                                        alt="User Avatar" 
+                                        class="header-avatar">
+                        </div>
+                    {{else}}
+                        <li><a href="/">Home</a></li>
+                        <li><a href="/login">Login/Register</a></li>
+                    {{/if}}
+                </ul>
+            </nav>
+        </header>
 
 
-    {{{body}}}
+        {{{body}}}
 
-    <footer>
-        <p>© {{{copyrightYear}}} {{{appName}}}. All rights reserved. Emojis are from https://github.com/github/gemoji/blob/master/db/emoji.json</p>
-    </footer>
-</body>
+        <footer>
+            <p>© {{{copyrightYear}}} {{{appName}}}. All rights reserved. Emojis are from https://github.com/github/gemoji/blob/master/db/emoji.json</p>
+        </footer>
+    </body>
+</div>
+
+
 </html>

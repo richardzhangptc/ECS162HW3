@@ -120,6 +120,10 @@ app.engine('handlebars', expressHandlebars.engine({
             }
             return options.inverse(this);
         },
+        eq: function(a, b) {
+            return a === b;
+        }
+        
     },
 }));
 
@@ -148,6 +152,8 @@ app.use((req, res, next) => {
     res.locals.postNeoType = 'Post';
     res.locals.loggedIn = req.session.loggedIn || false;
     res.locals.userId = req.session.userId || '';
+
+
     
     req.session.likedPosts = req.session.likedPosts || [];
     res.locals.currentUser = getCurrentUser(req);
@@ -167,15 +173,13 @@ app.use(express.json());                            // Parse JSON bodies (as sen
 // template
 //
 
-let sMode = 'Recency';
+
 
 
 app.get('/', async (req, res) => {
     try {
 
-
-        const sortOption = sMode;
-        const posts = await getPosts(req, sortOption);
+        const posts = await getPosts(req);
         const user = await getCurrentUser(req) || {};
         res.render('home', { posts, user});
     } catch (err) {
@@ -333,26 +337,13 @@ app.post('/like/:id', isAuthenticated, function(req, res) {
 });
 
 
-app.post('/updateSorting/:sortMode', isAuthenticated, async function(req, res) {
-
-    /*
-    let sortMode = req.params.sortMode;
-
-    sMode = sortMode;
-    console.log("SMODE IS " + sMode)
-    try {
-        let sortOption = sMode;
-        let posts = await getPosts(req, sortOption);
-        let user = await getCurrentUser(req) || {};
-        res.render('home', { posts, user});
-    } catch (err) {
-        console.error('Error fetching posts:', err);
-        res.redirect('/error');
-    }
-*/
-
-
+app.post('/updateSorting/:sortMode', isAuthenticated, (req, res) => {
+    const sortMode = req.params.sortMode;
+    req.session.sortMode = sortMode;
+    
+    res.send({ success: true });
 });
+
 
 
 app.post('/delete/:id', isAuthenticated, async (req, res) => {
@@ -364,8 +355,8 @@ app.post('/delete/:id', isAuthenticated, async (req, res) => {
         let user = await findUserById(userId);
 
 
-        if (!post || post.username !== user.username) {
-            return res.send({ success: false, message: 'not found' });
+        if (user.role == 'user' && (!post || post.username !== user.username)) {
+            return res.send({ success: false, message: 'not found or no perms' });
         }
 
 
@@ -611,21 +602,34 @@ function logoutUser(req, res) {
 // Function to render the profile page
 async function renderProfile(req, res) {
     try {
+        
         let user = await getCurrentUser(req);
         if (!user) {
             return res.redirect('/login');
         }
 
+        //console.log("USER ROLE IS " + user.role);
+
         let yourPosts = await db.all('SELECT * FROM posts WHERE username = ? ORDER BY timestamp DESC', [user.username]);
 
-        res.render('profile', { user, yourPosts});
+   
+        
+        yourPosts = await Promise.all(yourPosts.map(async (post) => {
+            let temp = { ...post };
+            temp.avatar_url = user.avatar_url;
 
-    } 
-    catch (err) {
+            return temp;
+        }));
+
+        res.render('profile', { user, userPosts: yourPosts });
+
+    } catch (err) {
         console.error('issue with ', err);
         res.redirect('/error');
     }
 }
+
+
 
 
 async function updatePostLikes(req, res) {
@@ -704,10 +708,9 @@ async function getCurrentUser(req) {
     }
 }
 
-// Function to get all posts, sorted by latest first
-async function getPosts(req, sortOption) {
 
-    //console.log(sortOption);
+async function getPosts(req) {
+    const sortMode = req.session.sortMode || 'Recency'; //dfeault
 
     try {
         let currentUser = await getCurrentUser(req);
@@ -722,8 +725,8 @@ async function getPosts(req, sortOption) {
 
             if (user) {
                 newPost.avatar_url = user.avatar_url;
-            } 
-            
+            }
+
             else {
                 newPost.avatar_url = undefined;
             }
@@ -733,29 +736,32 @@ async function getPosts(req, sortOption) {
         }));
 
 
-        
-        //base it off of the selected option
-        let sortedPosts = sortPosts(sortOption, result);
+        let sortedPosts = sortPosts(sortMode, result);
+
 
         return sortedPosts;
-    } catch (err) {
+    } 
+    catch (err) {
+        console.error('Error fetching posts:', err);
         return [];//empoty
     }
 }
 
 function sortPosts(mode, posts) {
+
     if (mode === 'Recency') {
 
-        posts.sort((x, y) => y.timestamp - x.timestamp);
+        posts.sort((x, y) => new Date(y.timestamp) - new Date(x.timestamp));
 
     }
-     else if (option === 'Likes') {
+    else if (mode === 'Likes') {
         posts.sort((x, y) => y.likes - x.likes);
     }
 
     return posts;
-}
 
+
+}
 
 
 // Function to add a new post
@@ -843,4 +849,101 @@ async function updateUsersWithAvatars() {
     catch (err) {
       console.error('issue:', err);
     }
+
   }
+
+
+
+
+app.post('/deleteaccount/', isAuthenticated, async (req, res) => {
+    //console.log("DELETING ACCOUNT");
+    
+    let userId = req.session.userId;
+
+    try {
+        await db.run('DELETE FROM posts WHERE username = (SELECT username FROM users WHERE id = ?)', [userId]);
+    
+
+        let likedPostIds = await db.all('SELECT postId FROM likes WHERE userId = ?', [userId]);
+        for (let { postId } of likedPostIds) {
+            await db.run('UPDATE posts SET likes = likes - 1 WHERE id = ?', [postId]);
+        }
+        await db.run('DELETE FROM likes WHERE userId = ?', [userId]);
+
+    
+
+        await db.run('DELETE FROM users WHERE id = ?', [userId]);
+
+        req.session.destroy();
+        res.send({ success: true });
+    }
+
+    catch (err) {
+        res.send({ success: false, message: 'issue deleting account' });
+    }
+
+
+});
+
+
+app.post('/setAdminMode', isAuthenticated, async (req, res) => {
+    try {
+        const userId = req.session.userId;
+        await db.run('UPDATE users SET role = "admin" WHERE id = ?', [userId]);
+
+        res.send({ success: true });
+    }
+    catch (err) {
+        res.send({ success: false, message: 'issue setting admin mode' });
+    }
+});
+
+app.post('/exitAdminMode', isAuthenticated, async (req, res) => {
+    try {
+        const userId = req.session.userId;
+        await db.run('UPDATE users SET role = "user" WHERE id = ?', [userId]);
+
+
+        res.send({ success: true });
+    }
+    catch (err) {
+        res.send({ success: false, message: 'issue exiting admin mode' });
+    }
+});
+
+
+
+app.post('/adminremoveaccount/:id', isAuthenticated, async (req, res) => {
+    let postId = parseInt(req.params.id);
+
+    let post = await db.get('SELECT * FROM posts WHERE id = ?', [postId]);
+    let username = post.username;
+    let user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
+
+    let userId = user.id;
+
+
+
+    try {
+
+        await db.run('DELETE FROM posts WHERE username = (SELECT username FROM users WHERE id = ?)', [userId]);
+
+        const likedPostIds = await db.all('SELECT postId FROM likes WHERE userId = ?', [userId]);
+        for (const { postId } of likedPostIds) {
+            await db.run('UPDATE posts SET likes = likes - 1 WHERE id = ?', [postId]);
+        }
+
+
+        await db.run('DELETE FROM likes WHERE userId = ?', [userId]);
+
+        await db.run('DELETE FROM users WHERE id = ?', [userId]);
+
+        res.send({ success: true });
+
+    }
+    catch (err) {
+        res.send({ success: false, message: 'issue removing account' });
+    }
+
+    
+});
